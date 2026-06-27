@@ -1,0 +1,6 @@
+@Novac_HostAddress = http://localhost:5255
+
+GET {{Novac_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
