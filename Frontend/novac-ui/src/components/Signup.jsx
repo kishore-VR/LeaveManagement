@@ -5,7 +5,6 @@ export default function Signup({ onSignup }) {
     email: "",
     password: "",
     fullName: "",
-    roleName: "User",
     domain: "Engineering"
   });
 
@@ -13,6 +12,15 @@ export default function Signup({ onSignup }) {
   const [loading, setLoading] = useState(false);
 
   const handleSignup = async () => {
+    // ✅ VALIDATION
+    if (!form.fullName || !form.email || !form.password) {
+      return setMsg("❌ All fields are required");
+    }
+
+    if (!form.email.includes("@")) {
+      return setMsg("❌ Invalid email");
+    }
+
     setLoading(true);
     setMsg("");
 
@@ -22,19 +30,25 @@ export default function Signup({ onSignup }) {
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify(form)
+        body: JSON.stringify({
+          ...form,
+          roleName: "User" // ✅ FORCE DEFAULT ROLE
+        })
       });
 
-      if (res.ok) {
-        setMsg("✅ Account created");
-
-        setTimeout(() => {
-          onSignup();
-        }, 500);
-      } else {
+      if (!res.ok) {
         const error = await res.text();
         setMsg("❌ " + error);
+        setLoading(false);
+        return;
       }
+
+      setMsg("✅ Account created as USER");
+
+      setTimeout(() => {
+        onSignup();
+      }, 500);
+
     } catch {
       setMsg("❌ Something went wrong");
     }
@@ -45,19 +59,25 @@ export default function Signup({ onSignup }) {
   return (
     <div style={styles.container}>
 
+      <h3>Create Account</h3>
+
       <input
         style={styles.input}
         placeholder="Full Name"
         value={form.fullName}
-        onChange={(e) => setForm({ ...form, fullName: e.target.value })}
+        onChange={(e) =>
+          setForm({ ...form, fullName: e.target.value })
+        }
       />
 
       <input
         style={styles.input}
         type="email"
-        placeholder="Email"
+        placeholder="Email (case-sensitive)"
         value={form.email}
-        onChange={(e) => setForm({ ...form, email: e.target.value })}
+        onChange={(e) =>
+          setForm({ ...form, email: e.target.value })
+        }
       />
 
       <input
@@ -65,25 +85,25 @@ export default function Signup({ onSignup }) {
         type="password"
         placeholder="Password"
         value={form.password}
-        onChange={(e) => setForm({ ...form, password: e.target.value })}
+        onChange={(e) =>
+          setForm({ ...form, password: e.target.value })
+        }
       />
-
-      <select
-        style={styles.input}
-        value={form.roleName}
-        onChange={(e) => setForm({ ...form, roleName: e.target.value })}
-      >
-        <option value="User">User</option>
-        <option value="Manager">Manager</option>
-        <option value="Admin">Admin</option>
-      </select>
 
       <input
         style={styles.input}
         placeholder="Domain"
         value={form.domain}
-        onChange={(e) => setForm({ ...form, domain: e.target.value })}
+        onChange={(e) =>
+          setForm({ ...form, domain: e.target.value })
+        }
       />
+
+      {/* ✅ ROLE INFO ONLY */}
+      <p style={styles.note}>
+        Default role: <strong>User</strong>  
+        (You can request Manager/Admin access after signup)
+      </p>
 
       <button
         style={{
@@ -108,6 +128,7 @@ const styles = {
     flexDirection: "column",
     gap: "12px"
   },
+
   input: {
     padding: "12px",
     borderRadius: "8px",
@@ -115,6 +136,7 @@ const styles = {
     outline: "none",
     fontSize: "14px"
   },
+
   button: {
     padding: "12px",
     borderRadius: "8px",
@@ -122,11 +144,16 @@ const styles = {
     background: "linear-gradient(135deg, #4f46e5, #9333ea)",
     color: "#fff",
     fontSize: "15px",
-    fontWeight: "600",
-    transition: "0.3s"
+    fontWeight: "600"
   },
+
   message: {
     textAlign: "center",
     fontSize: "13px"
+  },
+
+  note: {
+    fontSize: "12px",
+    color: "#555"
   }
 };

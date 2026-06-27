@@ -1,68 +1,86 @@
 import { useEffect, useState } from "react";
 
 export default function TeamList({ reload }) {
+
   const [teams, setTeams] = useState([]);
-  const [editingTeam, setEditingTeam] = useState(null);
   const [editingMember, setEditingMember] = useState(null);
-  const [users, setUsers] = useState([]);
-  const [selectedEmail, setSelectedEmail] = useState("");
+  const [editedName, setEditedName] = useState("");
 
-  // ✅ FIX ROLE (CASE INSENSITIVE)
-  const role = localStorage.getItem("role")?.toLowerCase();
+  const [editingTeamId, setEditingTeamId] = useState(null);
+  const [editedTeamName, setEditedTeamName] = useState("");
+
+  const [allUsers, setAllUsers] = useState([]);
+  const [selectedUser, setSelectedUser] = useState({});
+
   const token = localStorage.getItem("token");
+  const role = localStorage.getItem("role")?.toLowerCase();
 
-  // ✅ LOAD TEAMS
   const loadTeams = async () => {
     const res = await fetch("http://localhost:5255/api/team", {
       headers: { Authorization: `Bearer ${token}` }
     });
-    const data = await res.json();
+const text = await res.text();
+const data = text ? JSON.parse(text) : [];
     setTeams(data);
   };
 
-  const loadUsers = async () => {
-  try {
-    // ✅ Skip for user role (optimization)
-    if (role === "user") {
-      setUsers([]);
-      return;
-    }
-
-    const res = await fetch("http://localhost:5255/api/user/all", {
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
-    });
-
-    // ✅ Read as text FIRST (this is the key fix)
-    const text = await res.text();
-
-    // ✅ If empty → don't parse
-    if (!text) {
-      console.log("Empty response from API");
-      setUsers([]);
-      return;
-    }
-
-    // ✅ Try parsing safely
-    const data = JSON.parse(text);
-    setUsers(data);
-
-  } catch (err) {
-    console.log("Error loading users:", err);
-    setUsers([]);
-  }
-};
   useEffect(() => {
     loadTeams();
-    loadUsers();
+
+    fetch("http://localhost:5255/api/user/all", {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+.then(async (res) => {
+  const text = await res.text();
+  return text ? JSON.parse(text) : [];
+})      .then(data => setAllUsers(data));
+
   }, [reload]);
 
-  // ✅ DELETE TEAM
-  const deleteTeam = async (team) => {
-    if (!window.confirm(`Delete team "${team.teamName}"?`)) return;
+  const deleteMember = async (id) => {
+    await fetch(`http://localhost:5255/api/team/members/${id}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    loadTeams();
+  };
 
-    await fetch(`http://localhost:5255/api/team/${team.id}`, {
+  const updateMember = async (id) => {
+    await fetch(`http://localhost:5255/api/team/members/${id}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ name: editedName })
+    });
+
+    setEditingMember(null);
+    setEditedName("");
+    loadTeams();
+  };
+
+  const handleEditTeam = (team) => {
+    setEditingTeamId(team.id);
+    setEditedTeamName(team.teamName);
+  };
+
+  const updateTeam = async () => {
+    await fetch(`http://localhost:5255/api/team/${editingTeamId}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ teamName: editedTeamName })
+    });
+
+    setEditingTeamId(null);
+    loadTeams();
+  };
+
+  const deleteTeam = async (id) => {
+    await fetch(`http://localhost:5255/api/team/${id}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${token}` }
     });
@@ -70,286 +88,225 @@ export default function TeamList({ reload }) {
     loadTeams();
   };
 
-  // ✅ UPDATE TEAM
-  const updateTeam = async () => {
-    if (!editingTeam?.teamName) return alert("Team name required");
-
-    await fetch(`http://localhost:5255/api/team/${editingTeam.id}`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`
-      },
-      body: JSON.stringify(editingTeam)
-    });
-
-    setEditingTeam(null);
-    loadTeams();
-  };
-
-  // ✅ ADD MEMBER
+  // ✅ ADD MEMBER FUNCTION
   const addMember = async (teamId) => {
-    if (!selectedEmail) return alert("Select user");
+    const email = selectedUser[teamId];
+    if (!email) return alert("Select user");
 
-    const selectedUser = users.find(u => u.email === selectedEmail);
+    const user = allUsers.find(u => u.email === email);
 
-    await fetch(`http://localhost:5255/api/team/${teamId}/members`, {
+    const res = await fetch(`http://localhost:5255/api/team/${teamId}/members`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`
       },
       body: JSON.stringify({
-        name: selectedUser.fullName,
+        name: user.fullName,
+        email: user.email,
         expertise: "General"
       })
     });
 
-    setSelectedEmail("");
+    if (!res.ok) {
+      const err = await res.text();
+      alert(err);
+      return;
+    }
+
+    setSelectedUser(prev => ({ ...prev, [teamId]: "" }));
     loadTeams();
   };
 
-  // ✅ UPDATE MEMBER
-  const updateMember = async () => {
-    if (!editingMember?.name) return alert("Name required");
-
-    await fetch(`http://localhost:5255/api/team/members/${editingMember.id}`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`
-      },
-      body: JSON.stringify(editingMember)
-    });
-
-    setEditingMember(null);
-    loadTeams();
-  };
-
-  // ✅ DELETE MEMBER
-  const deleteMember = async (member) => {
-    if (!window.confirm(`Remove ${member.name}?`)) return;
-
-    await fetch(`http://localhost:5255/api/team/members/${member.id}`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${token}` }
-    });
-
-    loadTeams();
-  };
+  // ✅ GLOBAL CHECK: ALL USERS ALREADY ASSIGNED
+  const allAssignedEmails = teams.flatMap(t => t.members.map(m => m.email));
 
   return (
-    <div>
-      <h3>Your Teams</h3>
+    <div style={styles.container}>
 
-      {teams.length === 0 && <p>No teams yet</p>}
+      <h3 style={styles.title}>Teams</h3>
 
-      {teams.map((team) => (
+      {teams.map(team => (
         <div key={team.id} style={styles.card}>
 
-          {/* ✅ TEAM HEADER */}
           <div style={styles.header}>
-            {editingTeam?.id === team.id ? (
+
+            {editingTeamId === team.id ? (
               <input
-                value={editingTeam.teamName}
-                onChange={(e) =>
-                  setEditingTeam({ ...editingTeam, teamName: e.target.value })
-                }
+                value={editedTeamName}
+                onChange={(e) => setEditedTeamName(e.target.value)}
               />
             ) : (
               <h4>{team.teamName}</h4>
             )}
 
-            {/* ✅ FIXED ROLE CHECK */}
-            {(role === "admin" || role === "manager") && (
-              <div style={styles.btnGroup}>
-                <button style={styles.editBtn} onClick={() => setEditingTeam(team)}>
-                  Edit
-                </button>
-
-                <button
-                  style={styles.saveBtn}
-                  onClick={updateTeam}
-                  disabled={editingTeam?.id !== team.id}
-                >
-                  Save
-                </button>
-
-                <button style={styles.deleteBtn} onClick={() => deleteTeam(team)}>
-                  Delete
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* ✅ MEMBERS */}
-          <div style={styles.members}>
-            {team.members.length === 0 && <p>No members</p>}
-
-            {team.members.map((member) => (
-              <div key={member.id} style={styles.member}>
-
-                {editingMember?.id === member.id ? (
-                  <>
-                    <input
-                      value={editingMember.name}
-                      onChange={(e) =>
-                        setEditingMember({ ...editingMember, name: e.target.value })
-                      }
-                    />
-
-                    <input
-                      value={editingMember.expertise}
-                      onChange={(e) =>
-                        setEditingMember({
-                          ...editingMember,
-                          expertise: e.target.value
-                        })
-                      }
-                    />
-
-                    <button style={styles.saveBtn} onClick={updateMember}>
+            <div style={styles.actions}>
+              {(role === "admin" || role === "manager") && (
+                <>
+                  {editingTeamId === team.id ? (
+                    <button style={styles.saveBtn} onClick={updateTeam}>
                       Save
                     </button>
-                  </>
+                  ) : (
+                    <button style={styles.editBtn} onClick={() => handleEditTeam(team)}>
+                      Edit
+                    </button>
+                  )}
+
+                  <button style={styles.deleteBtn} onClick={() => deleteTeam(team.id)}>
+                    Delete
+                  </button>
+                </>
+              )}
+            </div>
+
+          </div>
+
+          <span style={styles.managerTag}>
+            Manager: {team.managerEmail}
+          </span>
+
+          <div>
+            <h5>Members</h5>
+
+            {team.members.map(m => (
+              <div key={m.id} style={styles.row}>
+
+                {editingMember === m.id ? (
+                  <input
+                    value={editedName}
+                    onChange={(e) => setEditedName(e.target.value)}
+                  />
                 ) : (
-                  <>
-                    <span>{member.name}</span>
-                    <span style={styles.badge}>{member.expertise}</span>
+                  <span>{m.name}</span>
+                )}
 
-                    {(role === "admin" || role === "manager") && (
-                      <div style={styles.memberActions}>
-                        <button
-                          style={styles.editBtn}
-                          onClick={() => setEditingMember(member)}
-                        >
-                          Edit
-                        </button>
+                {(role === "admin" || role === "manager") && (
+                  <div style={styles.actions}>
 
-                        <button
-                          style={styles.deleteBtnSmall}
-                          onClick={() => deleteMember(member)}
-                        >
-                          Delete
-                        </button>
-                      </div>
+                    {editingMember === m.id ? (
+                      <button onClick={() => updateMember(m.id)}>Save</button>
+                    ) : (
+                      <button onClick={() => {
+                        setEditingMember(m.id);
+                        setEditedName(m.name);
+                      }}>
+                        Edit
+                      </button>
                     )}
-                  </>
+
+                    <button onClick={() => deleteMember(m.id)}>
+                      Delete
+                    </button>
+
+                  </div>
                 )}
 
               </div>
             ))}
 
-            {/* ✅ ADD MEMBER */}
+            {/* ✅ ADD MEMBER UI */}
             {(role === "admin" || role === "manager") && (
-              <div style={styles.addMember}>
-                <select
-                  value={selectedEmail}
-                  onChange={(e) => setSelectedEmail(e.target.value)}
-                >
-                  <option value="">Select User</option>
-                  {users.map((u) => (
-                    <option key={u.email} value={u.email}>
-                      {u.fullName}
-                    </option>
-                  ))}
-                </select>
+              <>
+                <h5>Add Member</h5>
 
-                <button style={styles.addBtn} onClick={() => addMember(team.id)}>
-                  Add
-                </button>
-              </div>
+                <div style={styles.row}>
+                  <select
+                    value={selectedUser[team.id] || ""}
+                    onChange={(e) =>
+                      setSelectedUser({
+                        ...selectedUser,
+                        [team.id]: e.target.value
+                      })
+                    }
+                  >
+                    <option value="">-- Select User --</option>
+
+                    {allUsers.map(u => (
+                      <option
+                        key={u.email}
+                        value={u.email}
+                        disabled={allAssignedEmails.includes(u.email)}
+                      >
+                        {allAssignedEmails.includes(u.email)
+                          ? `${u.fullName} (Assigned)`
+                          : u.fullName}
+                      </option>
+                    ))}
+                  </select>
+
+                  <button onClick={() => addMember(team.id)}>
+                    Add
+                  </button>
+                </div>
+              </>
             )}
 
           </div>
+
         </div>
       ))}
+
     </div>
   );
 }
 
-/* ✅ FIXED STYLES */
 const styles = {
+  container: {
+    marginTop: "20px"
+  },
+  title: {
+    marginBottom: "10px"
+  },
   card: {
-    background: "#fff",
     padding: "15px",
     marginBottom: "15px",
     borderRadius: "10px",
-    boxShadow: "0 4px 10px rgba(0,0,0,0.1)"
+    background: "#fff",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.1)"
   },
-
   header: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center"
   },
-
-  btnGroup: {
+  row: {
+    display: "flex",
+    justifyContent: "space-between",
+    marginTop: "6px"
+  },
+  actions: {
     display: "flex",
     gap: "8px"
   },
-
-  members: {
-    marginTop: "10px"
-  },
-
-  member: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: "6px 0",
-    borderBottom: "1px solid #eee"
-  },
-
-  memberActions: {
-    display: "flex",
-    gap: "6px"
-  },
-
-  badge: {
-    background: "#e0e7ff",
-    padding: "3px 8px",
-    borderRadius: "6px"
-  },
-
   editBtn: {
     background: "#3b82f6",
     color: "#fff",
     border: "none",
-    padding: "5px 8px"
+    padding: "4px 8px",
+    borderRadius: "5px"
   },
-
   saveBtn: {
     background: "#10b981",
     color: "#fff",
     border: "none",
-    padding: "5px 8px"
+    padding: "4px 8px",
+    borderRadius: "5px"
   },
-
   deleteBtn: {
     background: "#ef4444",
     color: "#fff",
     border: "none",
-    padding: "5px 8px"
+    padding: "4px 8px",
+    borderRadius: "5px"
   },
-
-  deleteBtnSmall: {
-    background: "#ef4444",
+  managerTag: {
+    display: "inline-block",
+    marginTop: "5px",
+    fontSize: "12px",
+    background: "#6366f1",
     color: "#fff",
-    border: "none",
-    padding: "3px 6px"
-  },
-
-  addMember: {
-    display: "flex",
-    gap: "8px",
-    marginTop: "10px"
-  },
-
-  addBtn: {
-    background: "#2563eb",
-    color: "#fff",
-    padding: "5px 10px",
-    border: "none"
+    padding: "3px 6px",
+    borderRadius: "5px"
   }
 };
