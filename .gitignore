@@ -1,0 +1,15 @@
+# React
+node_modules/
+build/
+
+# .NET
+bin/
+obj/
+
+# IDE
+.vs/
+.vscode/
+
+# env
+.env
+``
